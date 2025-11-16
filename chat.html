@@ -68,10 +68,21 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import { getDatabase, ref, push, onChildAdded, query, limitToLast, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+import { getDatabase, ref, push, onChildAdded, query, limitToLast, update, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-const FIREBASE_CONFIG = { apiKey: "AIzaSyAWcThQ9FoieRoG9DJbzSaRwOqfmg65ykk", authDomain: "chatty-fbb90.firebaseapp.com", databaseURL: "https://chatty-fbb90-default-rtdb.firebaseio.com", projectId: "chatty-fbb90", storageBucket: "chatty-fbb90.firebasestorage.app", messagingSenderId: "44728958212", appId: "1:44728958212:web:9c7068e885943896d3e451", measurementId: "G-NKY98EHV69" };
+// ----- Firebase config (kept from your original) -----
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAWcThQ9FoieRoG9DJbzSaRwOqfmg65ykk",
+  authDomain: "chatty-fbb90.firebaseapp.com",
+  databaseURL: "https://chatty-fbb90-default-rtdb.firebaseio.com",
+  projectId: "chatty-fbb90",
+  storageBucket: "chatty-fbb90.firebasestorage.app",
+  messagingSenderId: "44728958212",
+  appId: "1:44728958212:web:9c7068e885943896d3e451",
+  measurementId: "G-NKY98EHV69"
+};
+
 const app = initializeApp(FIREBASE_CONFIG);
 const db = getDatabase(app);
 const auth = getAuth(app);
@@ -79,6 +90,7 @@ const messagesRef = ref(db, 'messages');
 const usersRef = ref(db, 'users');
 const statusRefRoot = ref(db, 'status');
 
+// UI elements
 const chatBox = document.getElementById('chatBox');
 const msgInput = document.getElementById('msgInput');
 const sendBtn  = document.getElementById('sendBtn');
@@ -89,10 +101,199 @@ const attachBtn = document.getElementById('attachBtn');
 const fileInput = document.getElementById('fileInput');
 const usersList = document.getElementById('usersList');
 
+// audio cue
 const incomingAudio = new Audio();
-incomingAudio.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAA...';
+incomingAudio.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAA...'; // placeholder silent short audio — you can replace with a real base64 audio
 
-function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtTime(ts){ try { return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); } catch(e){return ''+ts;} }
 function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
-function colorFromString(s){ let h=0; for(let i=0;i<s.length;i++){h = s.charCodeAt(i) + ((h<<5)-h);} return '#'+Math.abs(h).toString(16).slice(0,6).padEnd(6,'0'); }
-function avatarEl(name){ const span=document.createElement('div'); span.className='avatar'; span.style.background=colorFromString(name); span.textContent=(name||'?').trim().split(' ').map(p=>p[0]?.to
+
+function colorFromString(s){ let h=0; for(let i=0;i<s.length;i++){h = s.charCodeAt(i) + ((h<<5)-h);} const c = Math.abs(h).toString(16).slice(0,6).padEnd(6,'0'); return '#'+c; }
+
+// create an avatar element
+function avatarEl(name){ const span=document.createElement('div'); span.className='avatar'; span.style.background=colorFromString(name); span.textContent=(name||'?').trim().split(' ').map(p=>p[0]?.toUpperCase()).slice(0,2).join(''); return span; }
+
+// add message bubble
+function addBubble(msg, key){
+  if(!msg) return;
+  // if message already present, skip
+  if(document.getElementById('msg-'+key)) return;
+
+  const meEmail = auth.currentUser ? auth.currentUser.email : null;
+  const isMine = meEmail && msg.email === meEmail;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'msg-'+key;
+  wrap.className = 'bubble ' + (isMine ? 'mine' : 'other');
+
+  const header = document.createElement('div'); header.className='msgHeader';
+  const av = avatarEl(msg.name||msg.email||'User'); av.style.width='36px'; av.style.height='36px'; av.style.flex='0 0 36px';
+  if(!isMine) header.appendChild(av);
+  const nameWrap = document.createElement('div');
+  nameWrap.innerHTML = `<div class="userName">${escapeHtml(msg.name||msg.email||'User')}</div><div class="small">${escapeHtml(msg.email||'')}</div>`;
+  header.appendChild(nameWrap);
+
+  const text = document.createElement('div'); text.className='msgText';
+  if(msg.type === 'image' && msg.imageData){
+    const img = document.createElement('img'); img.src = msg.imageData; img.style.maxWidth='320px'; img.style.borderRadius='12px'; img.style.display='block'; text.appendChild(img);
+    if(msg.text) { const caption = document.createElement('div'); caption.textContent = msg.text; caption.className='small'; text.appendChild(caption); }
+  } else {
+    text.innerHTML = escapeHtml(msg.text||'');
+  }
+
+  const meta = document.createElement('div'); meta.className='msgMeta';
+  const time = document.createElement('div'); time.textContent = fmtTime(msg.ts||Date.now()); meta.appendChild(time);
+
+  // seen ticks
+  const ticks = document.createElement('div'); ticks.className='small';
+  const seenCount = msg.seenBy ? Object.keys(msg.seenBy).length : 0;
+  ticks.textContent = isMine ? (seenCount>0 ? '✓✓' : '✓') : '';
+  meta.appendChild(ticks);
+
+  wrap.appendChild(header);
+  wrap.appendChild(text);
+  wrap.appendChild(meta);
+
+  chatBox.appendChild(wrap);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  // play sound if incoming
+  if(!isMine) { try { incomingAudio.play().catch(()=>{}); } catch(e){} }
+}
+
+// ----------------------------------
+// Typing indicator (writes to /typing/{uid})
+let typingTimer = null;
+function setTyping(flag){
+  const uid = auth.currentUser && auth.currentUser.uid;
+  if(!uid) return;
+  const tRef = ref(db, `typing/${uid}`);
+  set(tRef, flag ? Date.now() : null);
+}
+
+msgInput.addEventListener('input', ()=>{
+  setTyping(true);
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(()=>{ setTyping(false); }, 1500);
+});
+
+// show typing indicator when anyone else is typing
+const typingWatcher = ref(db, 'typing');
+onValue(typingWatcher, snap => { // imported onValue earlier
+  const v = snap.val() || {};
+  const meUid = auth.currentUser ? auth.currentUser.uid : null;
+  const othersTyping = Object.keys(v).filter(k=>k!==meUid && v[k]);
+  typingIndicator.style.display = othersTyping.length ? 'block' : 'none';
+});
+
+// ----------------------------------
+// Presence (online) indicator
+function setPresence(uid){
+  if(!uid) return;
+  const myStatusRef = ref(db, `status/${uid}`);
+  set(myStatusRef, { online:true, lastActive: Date.now() });
+  onDisconnect(myStatusRef).set({ online:false, lastActive: Date.now() });
+}
+
+// render users list
+function renderUsersList(users){ usersList.innerHTML=''; for(const uid in users){ const u = users[uid]; const row=document.createElement('div'); row.className='userRow'; const av=avatarEl(u.name||u.email||'User'); row.appendChild(av); const meta=document.createElement('div'); meta.className='userMeta'; meta.innerHTML = `<div class="userName">${escapeHtml(u.name||u.email||'User')}</div><div class="userStatus">${u.online? 'Online': 'Last seen '+ (u.lastActive? new Date(u.lastActive).toLocaleString(): 'Unknown')}</div>`; row.appendChild(meta); usersList.appendChild(row); }
+}
+
+// watch status
+onValue(statusRefRoot, snap => { const s = snap.val() || {}; // combine with users
+  // get users snapshot
+  onValue(usersRef, usnap => { const users = usnap.val()||{}; for(const uid in s){ users[uid] = users[uid] || {}; users[uid].online = s[uid].online; users[uid].lastActive = s[uid].lastActive; }
+    renderUsersList(users);
+  });
+});
+
+// ----------------------------------
+// Message listener + seen updates
+function attachMessagesListener(){
+  // use reasonable limit to last 500
+  const recentQuery = query(messagesRef, limitToLast(500));
+  onChildAdded(recentQuery, snapshot => {
+    const key = snapshot.key;
+    const msg = snapshot.val();
+    if(!msg) return;
+    // mark as seen by me
+    const meUid = auth.currentUser ? auth.currentUser.uid : null;
+    if(meUid && (!msg.seenBy || !msg.seenBy[meUid])){
+      const msgRef = ref(db, `messages/${key}/seenBy/${meUid}`);
+      set(msgRef, true);
+    }
+    addBubble(msg, key);
+  });
+
+  // also listen for updates to messages to update seen ticks
+  onChildAdded(messagesRef, ()=>{}); // keep a simple listener alive
+}
+
+// ----------------------------------
+// Send message
+async function sendMessage(payload){
+  try{
+    await push(messagesRef, payload);
+  }catch(e){ console.error('Send failed', e); showStatus('Send failed'); }
+}
+
+sendBtn.addEventListener('click', async ()=>{
+  const text = msgInput.value.trim();
+  if(!text) return;
+  sendBtn.disabled = true;
+  const user = auth.currentUser;
+  await sendMessage({ name: user.displayName || user.email, email: user.email, uid: user.uid, text, ts: Date.now(), type:'text' });
+  msgInput.value=''; setTyping(false);
+  sendBtn.disabled = false;
+});
+
+msgInput.addEventListener('keypress', e=>{ if(e.key==='Enter'){ sendBtn.click(); } });
+
+// attach image
+attachBtn.addEventListener('click', ()=> fileInput.click());
+fileInput.addEventListener('change', ()=>{
+  const f = fileInput.files[0]; if(!f) return; const reader = new FileReader(); reader.onload = async ()=>{
+    const dataUrl = reader.result;
+    const user = auth.currentUser;
+    await sendMessage({ name: user.displayName || user.email, email: user.email, uid: user.uid, text:'', ts: Date.now(), type:'image', imageData: dataUrl });
+    fileInput.value = '';
+  }; reader.readAsDataURL(f);
+});
+
+// logout
+logoutBtn.onclick = ()=>{ signOut(auth).then(()=>{ sessionStorage.clear(); localStorage.clear(); window.location.href='index.html'; }); };
+
+// ----------------------------------
+// Start after auth ready
+showStatus('Loading chat...');
+onAuthStateChanged(auth, user => {
+  if(user){
+    showStatus('Connected as '+ (user.email||user.displayName||'user'));
+
+    // ensure auth.currentUser exists before attaching listeners
+    const waitForAuthReady = setInterval(() => {
+      if(auth.currentUser){
+        clearInterval(waitForAuthReady);
+
+        // set presence
+        setPresence(auth.currentUser.uid);
+
+        // create user record (simple)
+        set(ref(db, `users/${auth.currentUser.uid}`), { name: auth.currentUser.displayName || auth.currentUser.email, email: auth.currentUser.email });
+
+        // attach messages and presence/typing
+        attachMessagesListener();
+      }
+    }, 50);
+
+  } else {
+    setTimeout(()=>{ window.location.href='index.html'; }, 400);
+  }
+});
+
+// helper to update status text
+function showStatus(txt){ statusEl.textContent = txt; statusEl.style.display='block'; }
+
+</script>
+</body>
+</html>
