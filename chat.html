@@ -1,266 +1,144 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Golden Chat — Live</title>
-
 <style>
-  :root{
-    --gold:#D4AF37;
-    --gold-dark:#a78123;
-    --bg:#FFF9ED;
-    --bubble-mine:#FFF7E6;
-    --bubble-other:#ffffff;
-    --radius:18px;
-    font-family: Inter, system-ui, -apple-system, "Segoe UI";
-  }
+:root{
+  --gold:#D4AF37; --gold-dark:#a78123; --bg:#FFF9ED;
+  --bubble-mine:#FFF7E6; --bubble-other:#ffffff; --radius:18px;
+  font-family:Inter,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{height:100vh;display:flex;flex-direction:column;background:linear-gradient(180deg,#fffaf0,var(--bg));}
 
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{
-    height:100vh;
-    display:flex;
-    flex-direction:column;
-    background:linear-gradient(180deg,#fffaf0,var(--bg));
-  }
+header{
+  padding:14px 16px;background:linear-gradient(90deg,var(--gold),var(--gold-dark));
+  color:#111;font-weight:700;font-size:18px;text-align:center;position:relative;box-shadow:0 2px 10px rgba(0,0,0,0.08);
+}
+.sub{font-weight:500;font-size:13px;color:#0b0b0b;opacity:0.9;}
+#logout{position:absolute;right:10px;top:8px;font-size:12px;color:#111;background:rgba(255,255,255,0.6);padding:6px 8px;border-radius:8px;cursor:pointer;}
+#status{font-size:12px;color:#222;opacity:0.8;margin-top:6px;text-align:center;display:none;}
 
-  header{
-    padding:14px 16px;
-    background:linear-gradient(90deg,var(--gold),var(--gold-dark));
-    color:#111;
-    font-weight:700;
-    font-size:18px;
-    text-align:center;
-    position:relative;
-    box-shadow:0 2px 10px rgba(0,0,0,0.08);
-  }
+#chatBox{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth;}
+.bubble{padding:12px 16px;max-width:72%;border-radius:var(--radius);box-shadow:0 3px 12px rgba(0,0,0,0.06);word-break:break-word;}
+.mine{margin-left:auto;background:var(--bubble-mine);border-bottom-right-radius:6px;text-align:right;}
+.other{margin-right:auto;background:var(--bubble-other);border-bottom-left-radius:6px;text-align:left;}
+.meta{display:block;font-size:12px;color:#666;margin-top:6px;}
 
-  .sub{
-    font-weight:500;
-    font-size:13px;
-    color:#0b0b0b;
-    opacity:0.9;
-  }
+#bar{display:flex;padding:12px;gap:8px;background:#fff;border-top:1px solid rgba(0,0,0,0.06);}
+#msgInput{flex:1;padding:12px 14px;border-radius:18px;border:1px solid rgba(0,0,0,0.12);outline:none;font-size:15px;}
+#sendBtn{background:linear-gradient(90deg,var(--gold),var(--gold-dark));border:none;padding:0 18px;border-radius:18px;font-weight:700;cursor:pointer;min-width:72px;}
 
-  #chatBox{
-    flex:1;
-    overflow-y:auto;
-    padding:16px;
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-    scroll-behavior:smooth;
-  }
-
-  .bubble{
-    padding:12px 16px;
-    max-width:72%;
-    border-radius:var(--radius);
-    box-shadow:0 3px 12px rgba(0,0,0,0.06);
-    word-break:break-word;
-  }
-
-  .mine{
-    margin-left:auto;
-    background:var(--bubble-mine);
-    border-bottom-right-radius:6px;
-    text-align:right;
-  }
-
-  .other{
-    margin-right:auto;
-    background:var(--bubble-other);
-    border-bottom-left-radius:6px;
-    text-align:left;
-  }
-
-  .meta{
-    display:block;
-    font-size:12px;
-    color:#666;
-    margin-top:6px;
-  }
-
-  #bar{
-    display:flex;
-    padding:12px;
-    gap:8px;
-    background:#fff;
-    border-top:1px solid rgba(0,0,0,0.06);
-  }
-  #msgInput{
-    flex:1;
-    padding:12px 14px;
-    border-radius:18px;
-    border:1px solid rgba(0,0,0,0.12);
-    outline:none;
-    font-size:15px;
-  }
-  #sendBtn{
-    background:linear-gradient(90deg,var(--gold),var(--gold-dark));
-    border:none;
-    padding:0 18px;
-    border-radius:18px;
-    font-weight:700;
-    cursor:pointer;
-    min-width:72px;
-  }
-
-  #logout{
-    position:absolute;
-    right:10px;
-    top:8px;
-    font-size:12px;
-    color:#111;
-    background:rgba(255,255,255,0.6);
-    padding:6px 8px;
-    border-radius:8px;
-    cursor:pointer;
-  }
-
-  .status{
-    font-size:12px;
-    color:#222;
-    opacity:0.8;
-    margin-top:6px;
-    text-align:center;
-  }
-
-  @media (max-width:420px){
-    .bubble{ max-width:86% }
-    #sendBtn{ min-width:56px; padding:0 12px }
-  }
+@media(max-width:420px){.bubble{max-width:86%;} #sendBtn{min-width:56px;padding:0 12px;}}
 </style>
 </head>
 
 <body>
-
 <header>
   <div class="sub">Golden Chat — Live</div>
   <div id="logout">Logout</div>
-  <div id="status" class="status" style="display:none">Connecting…</div>
+  <div id="status">Connecting…</div>
 </header>
 
 <div id="chatBox" aria-live="polite"></div>
 
 <div id="bar">
-  <input id="msgInput" type="text" placeholder="Type your message..." autocomplete="off" />
+  <input id="msgInput" type="text" placeholder="Type your message..." autocomplete="off"/>
   <button id="sendBtn">Send</button>
 </div>
 
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-  import {
-    getDatabase,
-    ref,
-    push,
-    onChildAdded,
-    query,
-    limitToLast
-  } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getDatabase, ref, push, onChildAdded, query, limitToLast } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-  // ---------- Firebase config ----------
-  const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyAWcThQ9FoieRoG9DJbzSaRwOqfmg65ykk",
-    authDomain: "chatty-fbb90.firebaseapp.com",
-    databaseURL: "https://chatty-fbb90-default-rtdb.firebaseio.com",
-    projectId: "chatty-fbb90",
-    storageBucket: "chatty-fbb90.firebasestorage.app",
-    messagingSenderId: "44728958212",
-    appId: "1:44728958212:web:9c7068e885943896d3e451",
-    measurementId: "G-NKY98EHV69"
-  };
+// ---------- Firebase config ----------
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAWcThQ9FoieRoG9DJbzSaRwOqfmg65ykk",
+  authDomain: "chatty-fbb90.firebaseapp.com",
+  databaseURL: "https://chatty-fbb90-default-rtdb.firebaseio.com",
+  projectId: "chatty-fbb90",
+  storageBucket: "chatty-fbb90.firebasestorage.app",
+  messagingSenderId: "44728958212",
+  appId: "1:44728958212:web:9c7068e885943896d3e451",
+  measurementId: "G-NKY98EHV69"
+};
 
-  // ---------- Initialize Firebase ----------
-  const app = initializeApp(FIREBASE_CONFIG);
-  const db = getDatabase(app);
-  const messagesRef = ref(db, "messages");
+const app = initializeApp(FIREBASE_CONFIG);
+const db = getDatabase(app);
+const auth = getAuth(app);
+const messagesRef = ref(db, "messages");
 
-  // ---------- Check login ----------
-  let user = null;
-  try {
-    user = JSON.parse(sessionStorage.getItem('gc_user')) || JSON.parse(localStorage.getItem('gc_user'));
-  } catch(e){ user = null; }
-  if(!user){ window.location.href = 'index.html'; }
+const chatBox = document.getElementById('chatBox');
+const msgInput = document.getElementById('msgInput');
+const sendBtn  = document.getElementById('sendBtn');
+const logoutBtn = document.getElementById('logout');
+const statusEl = document.getElementById('status');
 
-  const chatBox = document.getElementById('chatBox');
-  const msgInput = document.getElementById('msgInput');
-  const sendBtn  = document.getElementById('sendBtn');
-  const statusEl = document.getElementById('status');
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
 
-  function showStatus(txt, ms=1500){
-    statusEl.textContent = txt;
-    statusEl.style.display='block';
-    if(ms) setTimeout(()=>statusEl.style.display='none',ms);
-  }
+function addBubble(msg){
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble ' + (msg.email === auth.currentUser.email ? 'mine':'other');
+  const nameLine = (msg.email === auth.currentUser.email ? '' : `<strong style="font-size:13px">${escapeHtml(msg.name)}</strong><br/>`);
+  wrap.innerHTML = `<div>${nameLine}${escapeHtml(msg.text)}</div>
+                    <div class="meta">${fmtTime(msg.ts)}</div>`;
+  chatBox.appendChild(wrap);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
 
-  function fmtTime(ts){
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-  }
+function showStatus(txt, ms=1500){
+  statusEl.textContent = txt;
+  statusEl.style.display='block';
+  if(ms) setTimeout(()=>statusEl.style.display='none',ms);
+}
 
-  function escapeHtml(s){
-    if(!s) return '';
-    return String(s)
-      .replaceAll('&','&amp;')
-      .replaceAll('<','&lt;')
-      .replaceAll('>','&gt;')
-      .replaceAll('"','&quot;')
-      .replaceAll("'",'&#39;');
-  }
+// ---------- Wait for authentication ----------
+onAuthStateChanged(auth, user=>{
+  if(user){
+    showStatus('Connected',1200);
 
-  function addBubble(msg){
-    const wrap = document.createElement('div');
-    wrap.className = 'bubble ' + (msg.email===user.email ? 'mine':'other');
-    const nameLine = (msg.email===user.email ? '' : `<strong style="font-size:13px">${escapeHtml(msg.name)}</strong><br/>`);
-    wrap.innerHTML = `<div>${nameLine}${escapeHtml(msg.text)}</div>
-                      <div class="meta">${fmtTime(msg.ts)}</div>`;
-    chatBox.appendChild(wrap);
-    chatBox.scrollTop = chatBox.scrollHeight;
-  }
+    // Listen for last 200 messages
+    const recentQuery = query(messagesRef, limitToLast(200));
+    onChildAdded(recentQuery, snapshot=>{
+      addBubble(snapshot.val());
+    });
 
-  // ---------- Listen for messages ----------
-  const recentQuery = query(messagesRef, limitToLast(200));
-  onChildAdded(recentQuery, snapshot => {
-    addBubble(snapshot.val());
-  }, err=>{
-    console.error('Realtime error',err);
-    showStatus('Connection error');
-  });
-
-  // ---------- Send message ----------
-  async function send(){
-    const txt = msgInput.value.trim();
-    if(!txt) return;
-    sendBtn.disabled = true;
-    try{
-      await push(messagesRef,{
-        name:user.name,
-        email:user.email,
-        text:txt,
-        ts:Date.now()
-      });
-      msgInput.value='';
-      sendBtn.disabled=false;
-    }catch(e){
-      console.error('Send error',e);
-      showStatus('Send failed');
-      sendBtn.disabled=false;
+    // Send message
+    async function send(){
+      const txt = msgInput.value.trim();
+      if(!txt) return;
+      sendBtn.disabled = true;
+      try{
+        await push(messagesRef,{
+          name: user.email,
+          email: user.email,
+          text: txt,
+          ts: Date.now()
+        });
+        msgInput.value='';
+      } catch(e){
+        console.error('Send error',e);
+        showStatus('Send failed');
+      }
+      sendBtn.disabled = false;
     }
+    sendBtn.addEventListener('click',send);
+    msgInput.addEventListener('keypress', e=>{ if(e.key==='Enter') send(); });
+
+    // Logout
+    logoutBtn.onclick = ()=>{
+      signOut(auth).then(()=>{ window.location.href='index.html'; });
+    };
+
+  } else {
+    // Not logged in → redirect to login
+    window.location.href = 'index.html';
   }
-
-  sendBtn.addEventListener('click',send);
-  msgInput.addEventListener('keypress',e=>{if(e.key==='Enter') send();});
-
-  // ---------- Logout ----------
-  document.getElementById('logout').onclick=()=>{
-    sessionStorage.removeItem('gc_user');
-    localStorage.removeItem('gc_user');
-    window.location.href='index.html';
-  };
-
-  showStatus('Connecting…',1200);
+});
 </script>
-
 </body>
 </html>
