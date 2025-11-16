@@ -36,6 +36,7 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
 #sendBtn{background:linear-gradient(90deg,var(--gold),var(--gold-dark));border:none;padding:10px 16px;border-radius:18px;font-weight:700;cursor:pointer;color:#111}
 .fileBtn{background:transparent;border:1px dashed rgba(0,0,0,0.06);padding:8px;border-radius:10px;cursor:pointer}
 .typing{font-size:13px;color:#444;padding:6px 12px}
+audio{max-width:250px;display:block;margin-top:6px;border-radius:12px}
 @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .footerNote{font-size:12px;color:#666;text-align:center;padding:6px}
 @media(max-width:860px){.container{padding:8px}.sidebar{display:none}.bubble{max-width:86%}}
@@ -53,7 +54,7 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
   <aside class="sidebar">
     <div style="font-weight:800">Contacts</div>
     <div id="usersList"></div>
-    <div class="footerNote">Online indicator, avatars, seen ticks, typing & image uploads enabled</div>
+    <div class="footerNote">Online indicator, avatars, seen ticks, typing & image/voice uploads enabled</div>
   </aside>
 
   <main class="main">
@@ -62,9 +63,8 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
     <div id="bar">
       <input id="fileInput" type="file" accept="image/*" style="display:none" />
       <button id="attachBtn" class="fileBtn" title="Attach image">📎</button>
-      <textarea id="msgInput" placeholder="Type your message..." autocomplete="off" rows="1" style="resize:none"></textarea>
+      <input id="msgInput" type="text" placeholder="Type your message..." autocomplete="off" />
       <button id="sendBtn">Send</button>
-      <button id="voiceBtn" class="fileBtn" title="Record Voice">🎤</button>
     </div>
   </main>
 </div>
@@ -74,7 +74,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebas
 import { getDatabase, ref, push, onChildAdded, query, limitToLast, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-// Firebase config
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAWcThQ9FoieRoG9DJbzSaRwOqfmg65ykk",
   authDomain: "chatty-fbb90.firebaseapp.com",
@@ -102,10 +101,11 @@ const typingIndicator = document.getElementById('typingIndicator');
 const attachBtn = document.getElementById('attachBtn');
 const fileInput = document.getElementById('fileInput');
 const usersList = document.getElementById('usersList');
-const voiceBtn = document.getElementById('voiceBtn');
 
-let mediaRecorder, audioChunks = [];
+const incomingAudio = new Audio();
+incomingAudio.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAA...'; 
 
+// --- NAME MAPPING ---
 const nameMap = {
   "cosmas@gmail.com": "COSMAS❤️",
   "sandii@gmail.com": "SANDRA❤️"
@@ -130,39 +130,45 @@ function addBubble(msg, key){
 
   const header = document.createElement('div'); 
   header.className='msgHeader';
-  const av = avatarEl(msg.name||mapName(msg.email)||'User'); 
+
+  const av = avatarEl(msg.name||msg.email||'User'); 
   av.style.width='36px'; 
   av.style.height='36px'; 
   av.style.flex='0 0 36px';
+
   if(!isMine) header.appendChild(av);
+
   const nameWrap = document.createElement('div');
-  nameWrap.innerHTML = `<div class="userName">${escapeHtml(msg.name||mapName(msg.email)||'User')}</div>`;
+  const displayName = mapName(msg.email);
+  nameWrap.innerHTML = `<div class="userName">${escapeHtml(displayName)}</div>`;
   header.appendChild(nameWrap);
 
   const text = document.createElement('div'); 
   text.className='msgText';
 
-  if(msg.type === 'image' && msg.imageData){
+  if(msg.type==='image' && msg.imageData){
     const img = document.createElement('img'); 
     img.src = msg.imageData; 
     img.style.maxWidth='320px'; 
     img.style.borderRadius='12px'; 
     img.style.display='block'; 
     text.appendChild(img);
-  } else if(msg.type === 'audio' && msg.audioData){
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.src = msg.audioData;
-    text.appendChild(audio);
+  } else if(msg.type==='audio' && msg.audioData){
+    const audioEl = document.createElement('audio');
+    audioEl.controls = true;
+    audioEl.src = msg.audioData;
+    text.appendChild(audioEl);
   } else {
     text.innerHTML = escapeHtml(msg.text||'');
   }
 
   const meta = document.createElement('div'); 
   meta.className='msgMeta';
+
   const time = document.createElement('div'); 
   time.textContent = fmtTime(msg.ts||Date.now()); 
   meta.appendChild(time);
+
   const ticks = document.createElement('div'); 
   ticks.className='small';
   const seenCount = msg.seenBy ? Object.keys(msg.seenBy).length : 0;
@@ -175,20 +181,23 @@ function addBubble(msg, key){
 
   chatBox.appendChild(wrap);
   chatBox.scrollTop = chatBox.scrollHeight;
+
+  if(!isMine){ try { incomingAudio.play().catch(()=>{}); } catch(e){} }
 }
 
+// Typing indicator
 let typingTimer = null;
 function setTyping(flag){
   const uid = auth.currentUser && auth.currentUser.uid;
   if(!uid) return;
-  set(ref(db, `typing/${uid}`), flag ? Date.now() : null);
+  const tRef = ref(db, `typing/${uid}`);
+  set(tRef, flag ? Date.now() : null);
 }
 msgInput.addEventListener('input', ()=>{
   setTyping(true);
   clearTimeout(typingTimer);
   typingTimer = setTimeout(()=>{ setTyping(false); }, 1500);
 });
-
 onValue(ref(db, 'typing'), snap => {
   const v = snap.val() || {};
   const meUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -196,6 +205,7 @@ onValue(ref(db, 'typing'), snap => {
   typingIndicator.style.display = othersTyping.length ? 'block' : 'none';
 });
 
+// Presence
 function setPresence(uid){
   if(!uid) return;
   const myStatusRef = ref(db, `status/${uid}`);
@@ -203,17 +213,22 @@ function setPresence(uid){
   onDisconnect(myStatusRef).set({ online:false, lastActive: Date.now() });
 }
 
+// Users list
 function renderUsersList(users){
   usersList.innerHTML='';
   for(const uid in users){
     const u = users[uid];
     const row=document.createElement('div'); 
     row.className='userRow';
-    const av=avatarEl(u.name||mapName(u.email)||'User'); 
+
+    const av=avatarEl(u.name||u.email||'User'); 
     row.appendChild(av);
+
     const meta=document.createElement('div'); 
     meta.className='userMeta';
-    meta.innerHTML = `<div class="userName">${escapeHtml(u.name||mapName(u.email)||'User')}</div>
+
+    const displayName = mapName(u.email);
+    meta.innerHTML = `<div class="userName">${escapeHtml(displayName)}</div>
                       <div class="userStatus">${u.online? 'Online': 'Last seen '+ (u.lastActive? new Date(u.lastActive).toLocaleString(): 'Unknown')}</div>`;
     row.appendChild(meta);
     usersList.appendChild(row);
@@ -233,12 +248,14 @@ onValue(statusRefRoot, snap => {
   });
 });
 
+// Messages
 function attachMessagesListener(){
   const recentQuery = query(messagesRef, limitToLast(500));
   onChildAdded(recentQuery, snapshot => {
     const key = snapshot.key;
     const msg = snapshot.val();
     if(!msg) return;
+
     const meUid = auth.currentUser ? auth.currentUser.uid : null;
     if(meUid && (!msg.seenBy || !msg.seenBy[meUid])){
       set(ref(db, `messages/${key}/seenBy/${meUid}`), true);
@@ -250,30 +267,28 @@ function attachMessagesListener(){
 async function sendMessage(payload){
   try{
     await push(messagesRef, payload);
-  }catch(e){ console.error('Send failed', e); }
+  }catch(e){ console.error('Send failed', e); showStatus('Send failed'); }
 }
 
-// Send button or Ctrl+Enter
+// Send text
 sendBtn.addEventListener('click', async ()=>{
   const text = msgInput.value.trim();
   if(!text) return;
   sendBtn.disabled = true;
   const user = auth.currentUser;
   await sendMessage({ name: user.displayName || user.email, email: user.email, uid: user.uid, text, ts: Date.now(), type:'text' });
-  msgInput.value=''; setTyping(false); sendBtn.disabled=false;
+  msgInput.value=''; 
+  setTyping(false);
+  sendBtn.disabled = false;
 });
+msgInput.addEventListener('keypress', e=>{ if(e.key==='Enter'){ sendBtn.click(); } });
 
-msgInput.addEventListener('keydown', e => {
-  if(e.key === 'Enter' && !e.shiftKey){
-    e.preventDefault();
-    sendBtn.click();
-  }
-});
-
-// Image attach
+// Attach image
 attachBtn.addEventListener('click', ()=> fileInput.click());
 fileInput.addEventListener('change', ()=>{
-  const f = fileInput.files[0]; if(!f) return; const reader = new FileReader();
+  const f = fileInput.files[0]; 
+  if(!f) return; 
+  const reader = new FileReader(); 
   reader.onload = async ()=>{
     const dataUrl = reader.result;
     const user = auth.currentUser;
@@ -283,33 +298,72 @@ fileInput.addEventListener('change', ()=>{
   reader.readAsDataURL(f);
 });
 
-// Voice recording
-voiceBtn.addEventListener('click', async ()=>{
-  if(mediaRecorder && mediaRecorder.state === 'recording'){
+// --- Voice Note ---
+let mediaRecorder = null;
+let audioChunks = [];
+const voiceBtn = document.createElement('button');
+voiceBtn.textContent = '🎤';
+voiceBtn.style.marginRight = '8px';
+voiceBtn.style.padding = '10px 14px';
+voiceBtn.style.borderRadius = '18px';
+voiceBtn.style.border = 'none';
+voiceBtn.style.cursor = 'pointer';
+voiceBtn.style.fontSize = '16px';
+voiceBtn.style.background = 'linear-gradient(90deg,var(--gold),var(--gold-dark))';
+voiceBtn.style.color = '#111';
+const bar = document.getElementById('bar');
+bar.insertBefore(voiceBtn, msgInput);
+
+voiceBtn.onclick = async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
     voiceBtn.textContent = '🎤';
   } else {
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = e=>{ audioChunks.push(e.data); };
-    mediaRecorder.onstop = async ()=>{
-      const blob = new Blob(audioChunks, {type:'audio/webm'});
-      const reader = new FileReader();
-      reader.onload = async ()=>{
-        const audioData = reader.result;
-        const user = auth.currentUser;
-        await sendMessage({ name: user.displayName || user.email, email: user.email, uid: user.uid, text:'', ts: Date.now(), type:'audio', audioData });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Your browser does not support audio recording.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const audioDataUrl = reader.result;
+          const user = auth.currentUser;
+          if (!user) return;
+          await push(messagesRef, {
+            name: user.displayName || user.email,
+            email: user.email,
+            uid: user.uid,
+            text: '',
+            ts: Date.now(),
+            type: 'audio',
+            audioData: audioDataUrl
+          });
+        };
+        reader.readAsDataURL(audioBlob);
       };
-      reader.readAsDataURL(blob);
-    };
-    mediaRecorder.start();
-    voiceBtn.textContent = '⏹ Stop';
+      mediaRecorder.start();
+      voiceBtn.textContent = '⏹️';
+    } catch (err) {
+      console.error(err);
+      alert('Could not access microphone.');
+    }
   }
-});
+};
 
 // Logout
-logoutBtn.onclick = ()=>{ signOut(auth).then(()=>{ sessionStorage.clear(); localStorage.clear(); window.location.href='index.html'; }); };
+logoutBtn.onclick = ()=>{ 
+  signOut(auth).then(()=>{ 
+    sessionStorage.clear(); 
+    localStorage.clear(); 
+    window.location.href='index.html'; 
+  }); 
+};
 
 showStatus('Loading chat...');
 onAuthStateChanged(auth, user => {
@@ -319,15 +373,22 @@ onAuthStateChanged(auth, user => {
       if(auth.currentUser){
         clearInterval(waitForAuthReady);
         setPresence(auth.currentUser.uid);
-        set(ref(db, `users/${auth.currentUser.uid}`), { name: auth.currentUser.displayName || user.email, email: user.email });
+        set(ref(db, `users/${auth.currentUser.uid}`), { 
+          name: auth.currentUser.displayName || auth.currentUser.email, 
+          email: auth.currentUser.email 
+        });
         attachMessagesListener();
       }
-    },50);
-  } else { setTimeout(()=>{ window.location.href='index.html'; },400); }
+    }, 50);
+  } else {
+    setTimeout(()=>{ window.location.href='index.html'; }, 400);
+  }
 });
 
-function showStatus(txt){ statusEl.textContent = txt; statusEl.style.display='block'; }
+function showStatus(txt){ 
+  statusEl.textContent = txt; 
+  statusEl.style.display='block'; 
+}
 </script>
-
 </body>
 </html>
