@@ -36,6 +36,7 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
 #msgInput{flex:1;padding:12px 14px;border-radius:18px;border:1px solid rgba(0,0,0,0.09);outline:none;font-size:15px;background:rgba(255,255,255,0.9)}
 #sendBtn{background:linear-gradient(90deg,var(--gold),var(--gold-dark));border:none;padding:10px 16px;border-radius:18px;font-weight:700;cursor:pointer;color:#111}
 .fileBtn{background:transparent;border:1px dashed rgba(0,0,0,0.06);padding:8px;border-radius:10px;cursor:pointer}
+.voiceBtn{background:var(--accent);border:none;padding:8px 12px;border-radius:50%;cursor:pointer;color:#fff;font-weight:700}
 .typing{font-size:13px;color:#444;padding:6px 12px}
 @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .footerNote{font-size:12px;color:#666;text-align:center;padding:6px}
@@ -54,7 +55,7 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
   <aside class="sidebar">
     <div style="font-weight:800">Contacts</div>
     <div id="usersList"></div>
-    <div class="footerNote">Online indicator, avatars, seen ticks, typing & image uploads enabled</div>
+    <div class="footerNote">Online indicator, avatars, seen ticks, typing & image/voice uploads enabled</div>
   </aside>
 
   <main class="main">
@@ -64,6 +65,7 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
       <input id="fileInput" type="file" accept="image/*" style="display:none" />
       <button id="attachBtn" class="fileBtn" title="Attach image">📎</button>
       <input id="msgInput" type="text" placeholder="Type your message..." autocomplete="off" />
+      <button id="voiceBtn" class="voiceBtn">🎤</button>
       <button id="sendBtn">Send</button>
     </div>
   </main>
@@ -71,10 +73,9 @@ header{padding:12px 16px;background:linear-gradient(90deg,var(--gold),var(--gold
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import { getDatabase, ref, push, onChildAdded, query, limitToLast, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+import { getDatabase, ref, push, onChildAdded, query, limitToLast, set, onValue, onDisconnect, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-// --- Firebase config ---
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAWcThQ9FoieRoG9DJbzSaRwOqfmg65ykk",
   authDomain: "chatty-fbb90.firebaseapp.com",
@@ -94,26 +95,25 @@ const statusEl = document.getElementById('status');
 const chatBox = document.getElementById('chatBox');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
+const voiceBtn = document.getElementById('voiceBtn');
 const logoutBtn = document.getElementById('logout');
 const usersList = document.getElementById('usersList');
 const typingIndicator = document.getElementById('typingIndicator');
 const attachBtn = document.getElementById('attachBtn');
 const fileInput = document.getElementById('fileInput');
 
-// --- Name mapping ---
 const nameMap = {
   "cosmas@gmail.com": "COSMAS❤️",
   "sandii@gmail.com": "SANDRA❤️"
 };
 function mapName(email){ return nameMap[email] || email; }
 
-// --- Helper functions ---
 function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
-function fmtTime(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''+ts; } }
+function fmtTime(ts){ try{ return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2d'}); } catch(e){ return ''+ts; }
+}
 function avatarEl(name){ const span=document.createElement('div'); span.className='avatar'; span.style.background='#'+Math.floor(Math.random()*16777215).toString(16); span.textContent=(name||'?').trim().split(' ').map(p=>p[0]?.toUpperCase()).slice(0,2).join(''); return span; }
 function showStatus(txt){ statusEl.textContent=txt; statusEl.style.display='block'; }
 
-// --- Presence ---
 function setPresence(uid){
   if(!uid) return;
   const myStatusRef = ref(db, `status/${uid}`);
@@ -121,91 +121,113 @@ function setPresence(uid){
   onDisconnect(myStatusRef).set({ online:false, lastActive: Date.now() });
 }
 
-// --- Render users ---
 function renderUsersList(users){
   usersList.innerHTML='';
   for(const uid in users){
     const u = users[uid];
     const row=document.createElement('div'); row.className='userRow';
-    const av=avatarEl(u.name||u.email||'User'); row.appendChild(av);
+    const av=avatarEl(mapName(u.name||u.email||'User')); row.appendChild(av);
     const meta=document.createElement('div'); meta.className='userMeta';
-    meta.innerHTML = `<div class="userName">${escapeHtml(mapName(u.name||u.email||'User'))}</div>
+    meta.innerHTML = `<div class="userName">${mapName(u.name||u.email||'User')}</div>
                       <div class="userStatus">${u.online?'Online':'Last seen '+(u.lastActive?new Date(u.lastActive).toLocaleString():'Unknown')}</div>`;
     row.appendChild(meta);
     usersList.appendChild(row);
   }
 }
 
-// --- Add chat bubble ---
 function addBubble(msg,key){
   if(!msg) return;
   if(document.getElementById('msg-'+key)) return;
-  const meEmail = auth.currentUser ? auth.currentUser.email : null;
+  const meEmail = auth.currentUser?.email;
   const isMine = meEmail && msg.email===meEmail;
 
   const wrap = document.createElement('div'); wrap.id='msg-'+key; wrap.className='bubble '+(isMine?'mine':'other');
   const header = document.createElement('div'); header.className='msgHeader';
   if(!isMine) header.appendChild(avatarEl(mapName(msg.name||msg.email||'User')));
   const nameWrap=document.createElement('div');
-  nameWrap.innerHTML=`<div class="userName">${escapeHtml(mapName(msg.name||msg.email||'User'))}</div><div class="small">${escapeHtml(msg.email||'')}</div>`;
+  nameWrap.innerHTML=`<div class="userName">${mapName(msg.name||msg.email||'User')}</div>`;
   header.appendChild(nameWrap);
 
   const text=document.createElement('div'); text.className='msgText';
-  text.innerHTML=escapeHtml(msg.text||'');
+  if(msg.type==='image' && msg.imageData){
+    const img=document.createElement('img'); img.src=msg.imageData; img.style.maxWidth='320px'; img.style.borderRadius='12px'; text.appendChild(img);
+  } else if(msg.type==='voice' && msg.voiceData){
+    const audio=document.createElement('audio'); audio.src=msg.voiceData; audio.controls=true; text.appendChild(audio);
+  } else { text.innerHTML=escapeHtml(msg.text||''); }
 
   const meta=document.createElement('div'); meta.className='msgMeta';
   const time=document.createElement('div'); time.textContent=fmtTime(msg.ts||Date.now()); meta.appendChild(time);
+
+  const ticks=document.createElement('div'); ticks.className='small';
+  const seenCount = msg.seenBy ? Object.keys(msg.seenBy).length : 0;
+  ticks.textContent = isMine ? (seenCount>1 ? '✓✓':'✓') : '';
+  meta.appendChild(ticks);
+
   wrap.appendChild(header); wrap.appendChild(text); wrap.appendChild(meta);
   chatBox.appendChild(wrap); chatBox.scrollTop=chatBox.scrollHeight;
+
+  const meUid = auth.currentUser?.uid;
+  if(!isMine && meUid && (!msg.seenBy || !msg.seenBy[meUid])){
+    set(ref(db, `messages/${key}/seenBy/${meUid}`), true);
+  }
 }
 
-// --- Messages listener ---
+// Typing
+let typingTimer=null;
+function setTyping(flag){ const uid=auth.currentUser?.uid; if(!uid) return; set(ref(db, `typing/${uid}`), flag?Date.now():null); }
+msgInput.addEventListener('input', ()=>{ setTyping(true); clearTimeout(typingTimer); typingTimer=setTimeout(()=>setTyping(false),1500); });
+onValue(ref(db,'typing'),snap=>{ const v=snap.val()||{}; const meUid=auth.currentUser?.uid; typingIndicator.style.display=Object.keys(v).filter(k=>k!==meUid && v[k]).length?'block':'none'; });
+
+// Messages listener
 function attachMessagesListener(){
   const messagesRef = ref(db,'messages');
   const recentQuery = query(messagesRef, limitToLast(500));
-  onChildAdded(recentQuery, snap=>{
-    const key = snap.key;
-    const msg = snap.val();
-    if(!msg) return;
-    addBubble(msg,key);
-
-    const meUid = auth.currentUser ? auth.currentUser.uid : null;
-    if(meUid && (!msg.seenBy || !msg.seenBy[meUid])){
-      set(ref(db, `messages/${key}/seenBy/${meUid}`), true);
-    }
-  });
+  onChildAdded(recentQuery,snap=>{ addBubble(snap.val(),snap.key); });
 }
 
-// --- Typing indicator ---
-let typingTimer = null;
-function setTyping(flag){
-  const uid = auth.currentUser?.uid;
-  if(!uid) return;
-  set(ref(db, `typing/${uid}`), flag?Date.now():null);
-}
-msgInput.addEventListener('input', ()=>{
-  setTyping(true); clearTimeout(typingTimer);
-  typingTimer=setTimeout(()=>setTyping(false),1500);
-});
-onValue(ref(db,'typing'),snap=>{
-  const v=snap.val()||{}; const meUid=auth.currentUser?.uid;
-  const othersTyping=Object.keys(v).filter(k=>k!==meUid && v[k]);
-  typingIndicator.style.display=othersTyping.length?'block':'none';
-});
+// Voice note
+let mediaRecorder, audioChunks=[];
+voiceBtn.onclick=async ()=>{
+  if(!mediaRecorder || mediaRecorder.state==='inactive'){
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e=>audioChunks.push(e.data);
+    mediaRecorder.onstop = async ()=>{
+      const blob = new Blob(audioChunks,{type:'audio/webm'});
+      audioChunks=[];
+      const reader=new FileReader();
+      reader.onloadend=async ()=>{
+        const base64 = reader.result;
+        const user=auth.currentUser;
+        await push(ref(db,'messages'),{
+          name: mapName(user.displayName||user.email),
+          email: user.email,
+          uid: user.uid,
+          ts: Date.now(),
+          type:'voice',
+          voiceData: base64
+        });
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.start();
+    voiceBtn.textContent='⏹️';
+  } else {
+    mediaRecorder.stop();
+    voiceBtn.textContent='🎤';
+  }
+};
 
-// --- Auth & start ---
+// Auth
 onAuthStateChanged(auth,user=>{
   if(!user){ window.location.href='index.html'; return; }
-
-  showStatus('Connected as '+(mapName(user.email||user.displayName||'user')));
-
+  showStatus('Connected as '+mapName(user.email||user.displayName||'user'));
   setPresence(user.uid);
   set(ref(db, `users/${user.uid}`), { name: mapName(user.displayName||user.email), email: user.email });
-
   attachMessagesListener();
 });
 
-// --- Send message ---
+// Send
 sendBtn.onclick=async ()=>{
   const user=auth.currentUser;
   if(!user||!msgInput.value.trim()) return;
@@ -220,18 +242,17 @@ sendBtn.onclick=async ()=>{
   msgInput.value=''; setTyping(false);
 };
 
-// --- Attach file ---
+// Attach image
 attachBtn.onclick=()=>fileInput.click();
 fileInput.addEventListener('change',()=>{
   const f=fileInput.files[0]; if(!f) return;
   const reader=new FileReader();
-  reader.onload=async ()=>{ 
+  reader.onload=async ()=>{
     const user=auth.currentUser;
     await push(ref(db,'messages'),{
       name: mapName(user.displayName||user.email),
       email: user.email,
       uid: user.uid,
-      text:'',
       ts: Date.now(),
       type:'image',
       imageData: reader.result
@@ -241,9 +262,9 @@ fileInput.addEventListener('change',()=>{
   reader.readAsDataURL(f);
 });
 
-// --- Logout ---
+// Logout
 logoutBtn.onclick=()=>signOut(auth).then(()=>{ sessionStorage.clear(); localStorage.clear(); window.location.href='index.html'; });
-</script>
 
+</script>
 </body>
 </html>
