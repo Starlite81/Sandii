@@ -45,7 +45,7 @@ audio{max-width:250px;display:block;margin-top:6px;border-radius:12px}
 <body>
 
 <header>
-  <div class="sub">❤️Sandii🥹</div>
+  <div class="sub">❤️Sandii❤️: <i> I love you</i></div>
   <div id="logout">Logout</div>
   <div id="status">Loading chat…</div>
 </header>
@@ -348,7 +348,7 @@ voiceBtn.onclick = async () => {
         reader.readAsDataURL(audioBlob);
       };
       mediaRecorder.start();
-      voiceBtn.textContent = '⏹️';
+      voiceBtn.textContent = '🎙️';
     } catch (err) {
       console.error(err);
       alert('Could not access microphone.');
