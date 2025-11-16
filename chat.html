@@ -183,9 +183,20 @@ function addBubble(msg, key){
   chatBox.scrollTop = chatBox.scrollHeight;
 
   if(!isMine){ try { incomingAudio.play().catch(()=>{}); } catch(e){} }
+
+  // --- Swipe to reply ---
+  let startX = 0;
+  wrap.addEventListener('touchstart', e => { startX = e.touches[0].clientX; });
+  wrap.addEventListener('touchend', e => {
+    const endX = e.changedTouches[0].clientX;
+    if(endX - startX > 80){ // swipe right
+      msgInput.focus();
+      msgInput.value = mapName(msg.email) + ": " + (msg.text || "") + "\n";
+    }
+  });
 }
 
-// Typing indicator
+// --- Typing indicator ---
 let typingTimer = null;
 function setTyping(flag){
   const uid = auth.currentUser && auth.currentUser.uid;
@@ -205,7 +216,18 @@ onValue(ref(db, 'typing'), snap => {
   typingIndicator.style.display = othersTyping.length ? 'block' : 'none';
 });
 
-// Presence
+// --- Enter inserts newline ---
+msgInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const start = msgInput.selectionStart;
+    const end = msgInput.selectionEnd;
+    msgInput.value = msgInput.value.substring(0, start) + "\n" + msgInput.value.substring(end);
+    msgInput.selectionStart = msgInput.selectionEnd = start + 1;
+  }
+});
+
+// --- Presence ---
 function setPresence(uid){
   if(!uid) return;
   const myStatusRef = ref(db, `status/${uid}`);
@@ -213,7 +235,7 @@ function setPresence(uid){
   onDisconnect(myStatusRef).set({ online:false, lastActive: Date.now() });
 }
 
-// Users list
+// Users list rendering
 function renderUsersList(users){
   usersList.innerHTML='';
   for(const uid in users){
@@ -281,7 +303,6 @@ sendBtn.addEventListener('click', async ()=>{
   setTyping(false);
   sendBtn.disabled = false;
 });
-msgInput.addEventListener('keypress', e=>{ if(e.key==='Enter'){ sendBtn.click(); } });
 
 // Attach image
 attachBtn.addEventListener('click', ()=> fileInput.click());
@@ -292,13 +313,13 @@ fileInput.addEventListener('change', ()=>{
   reader.onload = async ()=>{
     const dataUrl = reader.result;
     const user = auth.currentUser;
-    await sendMessage({ name: user.displayName || user.email, email: user.email, uid: user.uid, text:'', ts: Date.now(), type:'image', imageData: dataUrl });
+    await push(messagesRef, { name: user.displayName || user.email, email: user.email, uid: user.uid, text:'', ts: Date.now(), type:'image', imageData: dataUrl });
     fileInput.value = '';
   }; 
   reader.readAsDataURL(f);
 });
 
-// --- Voice Note ---
+// Voice Note
 let mediaRecorder = null;
 let audioChunks = [];
 const voiceBtn = document.createElement('button');
